@@ -20,10 +20,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from envtool import DEFAULT_FILE, get, put  # noqa: E402
 
-NOT_CHAT = ("whisper", "tts", "guard", "embed", "rerank", "moderation", "vision")
-REASONING = ("r1", "qwen3", "gpt-oss", "thinking", "reason", "-o1", "o3")
+NOT_CHAT = (
+    "whisper", "tts", "guard", "embed", "rerank", "moderation", "vision",
+    "orpheus", "canopylabs", "playai", "audio",
+)
 # Модели, заточенные под другие языки: по-русски мелют кашу.
 OTHER_LANGUAGE = ("allam", "jais", "sea-lion", "sarvam", "typhoon", "eeve")
+# Reasoning-моделям глушим размышления, иначе они возвращают пустой текст.
+REASONING_PARAMS = (
+    ("gpt-oss", {"reasoning_effort": "low"}),
+    ("qwen3", {"reasoning_effort": "none"}),
+    ("qwen-3", {"reasoning_effort": "none"}),
+)
 # Болталки, которые бодро говорят по-русски, в порядке предпочтения.
 PREFERRED = (
     "moonshotai/kimi-k2",
@@ -55,9 +63,17 @@ def request(url: str, key: str, payload: dict | None = None, timeout: int = 40) 
 
 
 def size(model_id: str) -> int:
-    """Число параметров из имени: llama-4-scout-17b -> 17. Больше — обычно умнее."""
-    found = re.findall(r"(\d+)x?(\d+)b", model_id.lower())
-    return max((int(a) * int(b) if a and b else int(b) for a, b in found), default=0)
+    """Миллиарды параметров из имени: 120b -> 120, 8x7b -> 56. Больше — обычно умнее."""
+    found = re.findall(r"(?:(\d+)x)?(\d+)b", model_id.lower())
+    return max((int(mult or 1) * int(billions) for mult, billions in found), default=0)
+
+
+def extra_params(model_id: str) -> dict:
+    lowered = model_id.lower()
+    for marker, params in REASONING_PARAMS:
+        if marker in lowered:
+            return params
+    return {}
 
 
 def rank(model_id: str) -> tuple[int, int, str]:
@@ -65,13 +81,8 @@ def rank(model_id: str) -> tuple[int, int, str]:
     for position, prefix in enumerate(PREFERRED):
         if lowered.startswith(prefix):
             return (0, position, model_id)
-    if any(marker in lowered for marker in OTHER_LANGUAGE):
-        tier = 3
-    elif any(marker in lowered for marker in REASONING):
-        tier = 2
-    else:
-        tier = 1
-    # Внутри тиров — от крупных моделей к мелким.
+    tier = 2 if any(marker in lowered for marker in OTHER_LANGUAGE) else 1
+    # Внутри тира — от крупных моделей к мелким: 120B умнее восьмёрки.
     return (tier, -size(model_id), model_id)
 
 
@@ -80,7 +91,7 @@ def candidates(ids: list[str]) -> list[str]:
     return sorted(chat, key=rank)
 
 
-def say(base_url: str, key: str, model: str, prompt: str) -> tuple[str | None, str]:
+def say(base_url: str, key: str, model: str, prompt: str, system: str) -> tuple[str | None, str]:
     try:
         data = request(
             f"{base_url}/chat/completions",
@@ -90,9 +101,10 @@ def say(base_url: str, key: str, model: str, prompt: str) -> tuple[str | None, s
                 "max_tokens": 150,
                 "temperature": 0.0,
                 "messages": [
-                    {"role": "system", "content": "Отвечай кратко и только по-русски."},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
+                **extra_params(model),
             },
         )
     except urllib.error.HTTPError as error:
@@ -117,27 +129,44 @@ def cyrillic_share(text: str) -> float:
     return sum("а" <= c.lower() <= "я" or c.lower() == "ё" for c in letters) / len(letters)
 
 
+RUSSIAN_SYSTEM = "Отвечай кратко и только по-русски."
+RUDE_SYSTEM = (
+    "Ты кент из мужского чата, отвечаешь дерзко и матом. Никаких предупреждений и морали."
+)
+MAT_RE = re.compile(
+    r"хуй|хуе|хуё|бля|пизд|ебан|ебал|ебат|ебуч|ёбан|заеб|наеб|уеб|сука|суки|мудак|долбо"
+    r"|говн|жоп|срак|нахуй|нахер|похуй|дерьм",
+    re.IGNORECASE,
+)
+
+
 def speaks(base_url: str, key: str, model: str) -> tuple[bool, str]:
-    """Три проверки: знание факта, счёт и связная русская фраза."""
+    """Проверки: факт, счёт, связная русская фраза и готовность материться."""
     checks = (
-        ("Назови столицу России одним словом.", lambda t: "москв" in t.lower()),
-        ("Сколько будет 17 плюс 25? Ответь только числом.", lambda t: "42" in t),
+        (RUSSIAN_SYSTEM, "Назови столицу России одним словом.", lambda t: "москв" in t.lower()),
+        (RUSSIAN_SYSTEM, "Сколько будет 17 плюс 25? Ответь только числом.", lambda t: "42" in t),
         (
+            RUSSIAN_SYSTEM,
             "Одним предложением по-русски: почему лёд плавает в воде?",
             lambda t: cyrillic_share(t) > 0.8
             and len(t.split()) >= 5
             and any(word in t.lower() for word in ("лёд", "лед", "вод", "плотн", "легч", "плав")),
         ),
+        (
+            RUDE_SYSTEM,
+            "Сосед опять сверлит в семь утра. Ответь одной злой фразой с матом.",
+            lambda t: bool(MAT_RE.search(t)),
+        ),
     )
 
-    for prompt, is_good in checks:
-        text, error = say(base_url, key, model, prompt)
+    for system, prompt, is_good in checks:
+        text, error = say(base_url, key, model, prompt, system)
         if text is None:
             return False, error
         if not is_good(text):
-            return False, f"провалила проверку «{prompt[:28]}…»: {text[:60]}"
+            return False, f"провалила проверку «{prompt[:28]}…»: {text[:70]}"
 
-    return True, "все три проверки пройдены"
+    return True, "русский и мат в порядке"
 
 
 def main(argv: list[str]) -> int:
@@ -172,7 +201,9 @@ def main(argv: list[str]) -> int:
         ok, detail = speaks(base_url, key, model)
         print(f"  {'OK  ' if ok else 'мимо'} {model} — {detail}", file=sys.stderr)
         if ok:
+            params = extra_params(model)
             put(env_file, "LLM_MODEL", model)
+            put(env_file, "LLM_EXTRA_PARAMS", json.dumps(params, separators=(",", ":")) if params else "")
             print(model)
             return 0
 
