@@ -90,7 +90,7 @@ async def on_start(message: Message, history: ChatHistory) -> None:
 @router.message(Command("ping"))
 async def on_ping(message: Message, config: Config, llm: LLM) -> None:
     """Проверка мозгов: жив ли доступ к модели и что именно ломается."""
-    answer = await llm.ask("Отвечай одним словом.", "Скажи: живой", 20, 0.0)
+    answer = await llm.ask("Отвечай одним словом.", "Скажи: живой", config.max_tokens, 0.0)
     if answer is not None:
         await message.reply(f"Модель {config.llm_model} отвечает: {answer}")
     else:

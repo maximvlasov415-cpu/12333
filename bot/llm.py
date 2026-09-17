@@ -67,6 +67,8 @@ class LLM:
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ],
+            # Запасной ход под причуды провайдера, напр. {"reasoning_effort": "none"}
+            **self._config.llm_extra_params,
         }
 
         try:
@@ -98,10 +100,18 @@ class LLM:
             logger.warning("LLM вернул пустой ответ: %s", data)
             return None
 
-        text = _clean(choices[0].get("message", {}).get("content") or "")
+        answer = choices[0].get("message") or {}
+        finish = choices[0].get("finish_reason")
+        text = _clean(answer.get("content") or "")
         if not text:
-            self.last_error = "модель вернула пустой текст"
-            logger.warning("LLM вернул пустой текст: %s", str(choices[0])[:300])
+            if answer.get("reasoning"):
+                why = "модель ушла в рассуждения и не выдала ответ — подними LLM_MAX_TOKENS или возьми модель без reasoning"
+            elif finish == "length":
+                why = "ответ упёрся в LLM_MAX_TOKENS"
+            else:
+                why = "модель вернула пустой текст"
+            self.last_error = f"{why} (finish_reason={finish})"
+            logger.warning("LLM вернул пустой текст: %s", str(choices[0])[:400])
             return None
 
         self.last_error = None
