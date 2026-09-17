@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -41,6 +42,7 @@ class LLM:
     def __init__(self, config: Config) -> None:
         self._config = config
         self._session: aiohttp.ClientSession | None = None
+        self.last_error: str | None = None
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(
@@ -71,23 +73,39 @@ class LLM:
             async with self._session.post(
                 f"{self._config.llm_base_url}/chat/completions", json=payload
             ) as response:
+                body = await response.text()
                 if response.status != 200:
-                    logger.warning("LLM ответил %s: %s", response.status, await response.text())
+                    self.last_error = f"HTTP {response.status}: {body[:300]}"
+                    logger.warning("LLM ответил %s: %s", response.status, body[:500])
                     return None
-                data = await response.json()
+                data = json.loads(body)
         except aiohttp.ClientError as error:
+            self.last_error = f"сеть: {error}"
             logger.warning("LLM недоступен: %s", error)
             return None
         except TimeoutError:
+            self.last_error = f"таймаут {self._config.request_timeout} c"
             logger.warning("LLM не ответил за %s секунд", self._config.request_timeout)
+            return None
+        except ValueError as error:
+            self.last_error = f"нечитаемый ответ: {error}"
+            logger.warning("LLM вернул не-JSON: %s", error)
             return None
 
         choices = data.get("choices") or []
         if not choices:
+            self.last_error = f"пустой ответ: {str(data)[:300]}"
             logger.warning("LLM вернул пустой ответ: %s", data)
             return None
 
-        return _clean(choices[0].get("message", {}).get("content") or "") or None
+        text = _clean(choices[0].get("message", {}).get("content") or "")
+        if not text:
+            self.last_error = "модель вернула пустой текст"
+            logger.warning("LLM вернул пустой текст: %s", str(choices[0])[:300])
+            return None
+
+        self.last_error = None
+        return text
 
     async def reply(self, prompt: str) -> str | None:
         """Реплика в чат от лица Павлика."""
@@ -99,7 +117,8 @@ class LLM:
 
         lowered = text.lower()
         if any(marker in lowered for marker in REFUSAL_MARKERS):
-            logger.info("Модель отказалась отвечать, включаю заглушку")
+            self.last_error = f"модель включила цензуру: {text[:200]}"
+            logger.warning("Модель отказалась отвечать: %s", text[:300])
             return None
 
         return text

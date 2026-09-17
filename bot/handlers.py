@@ -13,7 +13,15 @@ from aiogram.types import Message
 from .config import Config
 from .llm import LLM
 from .memory import ChatHistory
-from .persona import ADDRESSED_TEMPLATE, FALLBACKS, HINT_TEMPLATE, NO_JOKE_HINT, ROAST_TEMPLATE
+from .persona import (
+    ADDRESSED_TEMPLATE,
+    BOT_DISPLAY_NAME,
+    FALLBACKS,
+    FOLLOWUP_TEMPLATE,
+    HINT_TEMPLATE,
+    NO_JOKE_HINT,
+    ROAST_TEMPLATE,
+)
 from .profiler import Profiler
 from .profiles import ProfileStore
 from .wordplay import pick_joke
@@ -75,8 +83,18 @@ def _is_addressed(message: Message, bot_username: str, bot_id: int, name_pattern
 @router.message(Command("start", "help"))
 async def on_start(message: Message, history: ChatHistory) -> None:
     text = "Я Павлик. Позовёшь по имени или тегнешь — отвечу. Не позовёшь — всё равно отвечу."
-    history.add(message.chat.id, "Павлик", text)
+    history.add(message.chat.id, BOT_DISPLAY_NAME, text)
     await message.reply(text)
+
+
+@router.message(Command("ping"))
+async def on_ping(message: Message, config: Config, llm: LLM) -> None:
+    """Проверка мозгов: жив ли доступ к модели и что именно ломается."""
+    answer = await llm.ask("Отвечай одним словом.", "Скажи: живой", 20, 0.0)
+    if answer is not None:
+        await message.reply(f"Модель {config.llm_model} отвечает: {answer}")
+    else:
+        await message.reply(f"Модель {config.llm_model} молчит.\nПричина: {llm.last_error}")
 
 
 @router.message(F.text)
@@ -106,12 +124,22 @@ async def on_message(
 
     me = await bot.me()
     addressed = _is_addressed(message, me.username or "", me.id, name_pattern)
+    # Разговор с Павликом ещё идёт — влезать можно чаще и без кулдауна.
+    in_dialogue = history.spoke_recently(message.chat.id, BOT_DISPLAY_NAME)
     if not addressed:
-        if random.random() >= config.random_reply_probability or not throttle.allow(message.chat.id):
+        chance = config.followup_probability if in_dialogue else config.random_reply_probability
+        if random.random() >= chance:
+            return
+        if not in_dialogue and not throttle.allow(message.chat.id):
             return
 
     joke = pick_joke(text) if random.random() < config.joke_probability else None
-    template = ADDRESSED_TEMPLATE if addressed else ROAST_TEMPLATE
+    if addressed:
+        template = ADDRESSED_TEMPLATE
+    elif in_dialogue:
+        template = FOLLOWUP_TEMPLATE
+    else:
+        template = ROAST_TEMPLATE
     context = "\n\n".join(
         part
         for part in (
@@ -134,5 +162,5 @@ async def on_message(
             return
         reply = joke.capitalize() + " чтоли" if joke else random.choice(FALLBACKS)
 
-    history.add(message.chat.id, "Павлик", reply)
+    history.add(message.chat.id, BOT_DISPLAY_NAME, reply)
     await message.reply(reply)

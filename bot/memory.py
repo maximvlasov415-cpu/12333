@@ -13,6 +13,11 @@ class ChatHistory:
     def add(self, chat_id: int, author: str, text: str) -> None:
         self._chats[chat_id].append((author, text))
 
+    def spoke_recently(self, chat_id: int, author: str, window: int = 3) -> bool:
+        """Павлик встревал в последние сообщения — значит разговор с ним ещё идёт."""
+        recent = list(self._chats[chat_id])[-window:]
+        return any(name == author for name, _ in recent)
+
     def transcript(self, chat_id: int) -> str:
         lines = [f"{author}: {text}" for author, text in self._chats[chat_id]]
         if not lines:
