@@ -21,37 +21,11 @@ if [[ ! -f "$SRC/requirements.txt" ]]; then
 fi
 
 set_env() {
-    APP_DIR="$APP_DIR" KEY="$1" VALUE="$2" python3 - <<'PY'
-import os
-from pathlib import Path
-
-path = Path(os.environ["APP_DIR"]) / ".env"
-key, value = os.environ["KEY"], os.environ["VALUE"]
-lines, done = [], False
-for line in path.read_text(encoding="utf-8").splitlines():
-    if not line.lstrip().startswith("#") and line.split("=", 1)[0].strip() == key:
-        lines.append(f"{key}={value}")
-        done = True
-    else:
-        lines.append(line)
-if not done:
-    lines.append(f"{key}={value}")
-path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-PY
+    python3 "$SRC/deploy/envtool.py" set "$1" "$2" "$APP_DIR/.env"
 }
 
 get_env() {
-    APP_DIR="$APP_DIR" KEY="$1" python3 - <<'PY'
-import os
-from pathlib import Path
-
-path = Path(os.environ["APP_DIR"]) / ".env"
-key = os.environ["KEY"]
-for line in path.read_text(encoding="utf-8").splitlines():
-    if not line.lstrip().startswith("#") and line.split("=", 1)[0].strip() == key:
-        print(line.split("=", 1)[1].strip())
-        break
-PY
+    python3 "$SRC/deploy/envtool.py" get "$1" "$APP_DIR/.env"
 }
 
 echo "==> Ставлю пакеты"
