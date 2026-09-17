@@ -63,13 +63,35 @@ cp .env.example .env
 - `PROFILE_UPDATE_EVERY` — раз во сколько сообщений обновлять досье на участников.
   Досье лежит в `profiles.json` (`PROFILE_PATH`) и переживает перезапуск.
 
-## Запуск
+## Запуск локально
 
 ```bash
 python -m bot
 ```
 
-Держать запущенным постоянно проще всего через systemd или `docker`/`screen` на любой VPS.
+## Запуск на сервере (Ubuntu/Debian, systemd)
+
+На сервере:
+
+```bash
+git clone -b claude/friendly-fermi-u80hzg https://github.com/maximvlasov415-cpu/12333.git pavlik
+cd pavlik
+sudo bash deploy/install.sh
+```
+
+Скрипт поставит зависимости, заведёт системного пользователя `pavlik`, разложит бота
+в `/opt/pavlik`, спросит токен бота и ключ Groq (ввод скрытый, попадает только в
+`/opt/pavlik/.env` с правами 600) и поднимет сервис с автозапуском.
+
+| Что нужно | Команда |
+|---|---|
+| Логи | `journalctl -u pavlik -f` |
+| Перезапуск | `sudo systemctl restart pavlik` |
+| Настройки | `sudo nano /opt/pavlik/.env`, потом перезапуск |
+| Обновить бота | `git pull` в папке репозитория и снова `sudo bash deploy/install.sh` |
+
+Повторный запуск скрипта — это обновление: код перезаливается, а `.env` и накопленное
+досье `profiles.json` остаются на месте.
 
 ## Как это устроено
 

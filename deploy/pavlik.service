@@ -1,0 +1,23 @@
+[Unit]
+Description=Pavlik telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pavlik
+WorkingDirectory=/opt/pavlik
+ExecStart=/opt/pavlik/.venv/bin/python -m bot
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/pavlik
+
+[Install]
+WantedBy=multi-user.target
