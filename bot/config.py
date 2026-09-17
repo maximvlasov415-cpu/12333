@@ -69,7 +69,7 @@ class Config:
             followup_probability=float(os.getenv("FOLLOWUP_PROBABILITY", "0.5")),
             joke_probability=float(os.getenv("JOKE_PROBABILITY", "0.15")),
             history_limit=int(os.getenv("HISTORY_LIMIT", "30")),
-            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "400")),
+            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "2000")),
             temperature=float(os.getenv("LLM_TEMPERATURE", "0.9")),
             request_timeout=float(os.getenv("LLM_TIMEOUT", "30")),
             allowed_chat_ids={int(chat_id) for chat_id in _split(os.getenv("ALLOWED_CHAT_IDS", ""))},

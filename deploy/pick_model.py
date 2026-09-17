@@ -26,9 +26,10 @@ NOT_CHAT = (
 )
 # Модели, заточенные под другие языки: по-русски мелют кашу.
 OTHER_LANGUAGE = ("allam", "jais", "sea-lion", "sarvam", "typhoon", "eeve")
-# Reasoning-моделям глушим размышления, иначе они возвращают пустой текст.
+# Шутка требует подумать, но размышления едят тот же лимит токенов, что и ответ:
+# отсюда средний уровень, а не максимальный.
 REASONING_PARAMS = (
-    ("gpt-oss", {"reasoning_effort": "low"}),
+    ("gpt-oss", {"reasoning_effort": "medium"}),
     ("qwen3", {"reasoning_effort": "none"}),
     ("qwen-3", {"reasoning_effort": "none"}),
 )
@@ -98,7 +99,7 @@ def say(base_url: str, key: str, model: str, prompt: str, system: str) -> tuple[
             key,
             {
                 "model": model,
-                "max_tokens": 150,
+                "max_tokens": 800,
                 "temperature": 0.0,
                 "messages": [
                     {"role": "system", "content": system},
