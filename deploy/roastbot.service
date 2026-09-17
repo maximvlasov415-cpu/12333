@@ -1,0 +1,16 @@
+[Unit]
+Description=Telegram roast bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=roastbot
+WorkingDirectory=/opt/roastbot
+EnvironmentFile=/opt/roastbot/.env
+ExecStart=/opt/roastbot/.venv/bin/python -m bot.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
