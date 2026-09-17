@@ -76,15 +76,24 @@ if [[ ! -f "$APP_DIR/.env" ]]; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
 fi
 
+# Ключи можно передать переменными окружения:
+#   sudo TELEGRAM_BOT_TOKEN=... LLM_API_KEY=... bash deploy/install.sh
+# Иначе скрипт спросит их скрытым вводом.
 if [[ -z "$(get_env TELEGRAM_BOT_TOKEN)" ]]; then
-    read -rsp "Токен бота от @BotFather: " token
-    echo
+    token="${TELEGRAM_BOT_TOKEN:-}"
+    if [[ -z "$token" ]]; then
+        read -rsp "Токен бота от @BotFather: " token
+        echo
+    fi
     set_env TELEGRAM_BOT_TOKEN "$token"
 fi
 
 if [[ -z "$(get_env LLM_API_KEY)" ]]; then
-    read -rsp "Ключ Groq (console.groq.com/keys): " key
-    echo
+    key="${LLM_API_KEY:-}"
+    if [[ -z "$key" ]]; then
+        read -rsp "Ключ Groq (console.groq.com/keys): " key
+        echo
+    fi
     set_env LLM_API_KEY "$key"
 fi
 
