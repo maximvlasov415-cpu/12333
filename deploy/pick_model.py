@@ -52,14 +52,20 @@ def request(url: str, key: str, payload: dict | None = None, timeout: int = 40) 
         return json.loads(response.read().decode())
 
 
+def size(model_id: str) -> int:
+    """Число параметров из имени: llama-4-scout-17b -> 17. Больше — обычно умнее."""
+    found = re.findall(r"(\d+)x?(\d+)b", model_id.lower())
+    return max((int(a) * int(b) if a and b else int(b) for a, b in found), default=0)
+
+
 def rank(model_id: str) -> tuple[int, int, str]:
     lowered = model_id.lower()
     for position, prefix in enumerate(PREFERRED):
         if lowered.startswith(prefix):
             return (0, position, model_id)
     thinks = any(marker in lowered for marker in REASONING)
-    instruct = "instruct" in lowered or "instant" in lowered or "versatile" in lowered
-    return (2 if thinks else 1, 0 if instruct else 1, model_id)
+    # Внутри тиров — от крупных моделей к мелким.
+    return (2 if thinks else 1, -size(model_id), model_id)
 
 
 def candidates(ids: list[str]) -> list[str]:
@@ -68,7 +74,7 @@ def candidates(ids: list[str]) -> list[str]:
 
 
 def speaks(base_url: str, key: str, model: str) -> tuple[bool, str]:
-    """Живой запрос: модель должна вернуть непустой текст."""
+    """Живой запрос: модель должна внятно ответить по-русски."""
     try:
         data = request(
             f"{base_url}/chat/completions",
@@ -78,8 +84,8 @@ def speaks(base_url: str, key: str, model: str) -> tuple[bool, str]:
                 "max_tokens": 100,
                 "temperature": 0.0,
                 "messages": [
-                    {"role": "system", "content": "Отвечай одним словом."},
-                    {"role": "user", "content": "Скажи: живой"},
+                    {"role": "system", "content": "Отвечай кратко и только по-русски."},
+                    {"role": "user", "content": "Назови столицу России одним словом."},
                 ],
             },
         )
@@ -91,11 +97,13 @@ def speaks(base_url: str, key: str, model: str) -> tuple[bool, str]:
     choice = (data.get("choices") or [{}])[0]
     answer = choice.get("message") or {}
     text = THINK_RE.sub("", answer.get("content") or "").strip()
-    if text:
-        return True, text[:60]
-    if answer.get("reasoning"):
-        return False, "ушла в рассуждения, текста нет"
-    return False, f"пустой текст (finish_reason={choice.get('finish_reason')})"
+    if not text:
+        if answer.get("reasoning"):
+            return False, "ушла в рассуждения, текста нет"
+        return False, f"пустой текст (finish_reason={choice.get('finish_reason')})"
+    if "москв" not in text.lower():
+        return False, f"не поняла простой вопрос по-русски: {text[:60]}"
+    return True, text[:60]
 
 
 def main(argv: list[str]) -> int:
@@ -122,7 +130,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     print("Проверяю модели живым запросом:", file=sys.stderr)
-    for model in queue[:8]:
+    for model in queue[:12]:
         ok, detail = speaks(base_url, key, model)
         print(f"  {'OK  ' if ok else 'мимо'} {model} — {detail}", file=sys.stderr)
         if ok:
@@ -130,7 +138,9 @@ def main(argv: list[str]) -> int:
             print(model)
             return 0
 
-    print("Ни одна модель не ответила текстом. Смотри список выше.", file=sys.stderr)
+    print("Ни одна модель не заговорила по-русски. Что есть у провайдера:", file=sys.stderr)
+    print("\n".join(f"  - {m}" for m in models), file=sys.stderr)
+    print("Стоит перейти на другого провайдера — см. варианты в .env.example", file=sys.stderr)
     return 1
 
 
