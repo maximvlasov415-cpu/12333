@@ -40,7 +40,13 @@ def request(url: str, key: str, payload: dict | None = None, timeout: int = 40) 
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Дефолтный Python-urllib у некоторых провайдеров ловит 403 от защиты.
+            "User-Agent": "pavlik-bot/1.0",
+        },
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode())
@@ -101,7 +107,11 @@ def main(argv: list[str]) -> int:
 
     try:
         models = [m["id"] for m in request(f"{base_url}/models", key)["data"]]
-    except (urllib.error.URLError, urllib.error.HTTPError, KeyError, ValueError) as error:
+    except urllib.error.HTTPError as error:
+        print(f"Не смог получить список моделей: HTTP {error.code}", file=sys.stderr)
+        print(error.read().decode()[:300], file=sys.stderr)
+        return 1
+    except (urllib.error.URLError, KeyError, ValueError) as error:
         print(f"Не смог получить список моделей: {error}", file=sys.stderr)
         return 1
 
