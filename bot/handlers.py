@@ -13,7 +13,7 @@ from aiogram.types import Message
 from .config import Config
 from .llm import LLM
 from .memory import ChatHistory
-from .persona import ADDRESSED_TEMPLATE, FALLBACKS, HINT_TEMPLATE, ROAST_TEMPLATE
+from .persona import ADDRESSED_TEMPLATE, FALLBACKS, HINT_TEMPLATE, NO_JOKE_HINT, ROAST_TEMPLATE
 from .profiler import Profiler
 from .profiles import ProfileStore
 from .wordplay import pick_joke
@@ -110,7 +110,7 @@ async def on_message(
         if random.random() >= config.random_reply_probability or not throttle.allow(message.chat.id):
             return
 
-    joke = pick_joke(text)
+    joke = pick_joke(text) if random.random() < config.joke_probability else None
     template = ADDRESSED_TEMPLATE if addressed else ROAST_TEMPLATE
     context = "\n\n".join(
         part
@@ -124,7 +124,7 @@ async def on_message(
         context=context,
         author=author,
         text=text,
-        hint=HINT_TEMPLATE.format(joke=joke) if joke else "",
+        hint=HINT_TEMPLATE.format(joke=joke) if joke else NO_JOKE_HINT,
     )
 
     await bot.send_chat_action(message.chat.id, "typing")

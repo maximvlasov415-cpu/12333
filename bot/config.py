@@ -20,6 +20,7 @@ class Config:
     names: list[str]
     random_reply_probability: float
     random_reply_cooldown: int
+    joke_probability: float
     history_limit: int
     max_tokens: int
     temperature: float
@@ -56,6 +57,7 @@ class Config:
             names=names,
             random_reply_probability=float(os.getenv("RANDOM_REPLY_PROBABILITY", "0.08")),
             random_reply_cooldown=int(os.getenv("RANDOM_REPLY_COOLDOWN", "180")),
+            joke_probability=float(os.getenv("JOKE_PROBABILITY", "0.15")),
             history_limit=int(os.getenv("HISTORY_LIMIT", "30")),
             max_tokens=int(os.getenv("LLM_MAX_TOKENS", "200")),
             temperature=float(os.getenv("LLM_TEMPERATURE", "1.0")),
