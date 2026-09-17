@@ -7,7 +7,7 @@ import re
 import aiohttp
 
 from .config import Config
-from .persona import SYSTEM_PROMPT
+from .persona import FEWSHOT, SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +55,28 @@ class LLM:
             await self._session.close()
             self._session = None
 
-    async def ask(self, system: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
+    async def ask(
+        self,
+        system: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        examples: tuple[tuple[str, str], ...] = (),
+    ) -> str | None:
         if self._session is None:
             raise RuntimeError("LLM.start() не вызван")
+
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        for user_line, assistant_line in examples:
+            messages.append({"role": "user", "content": user_line})
+            messages.append({"role": "assistant", "content": assistant_line})
+        messages.append({"role": "user", "content": prompt})
 
         payload = {
             "model": self._config.llm_model,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             # Запасной ход под причуды провайдера, напр. {"reasoning_effort": "none"}
             **self._config.llm_extra_params,
         }
@@ -120,7 +130,11 @@ class LLM:
     async def reply(self, prompt: str) -> str | None:
         """Реплика в чат от лица Павлика."""
         text = await self.ask(
-            SYSTEM_PROMPT, prompt, self._config.max_tokens, self._config.temperature
+            SYSTEM_PROMPT,
+            prompt,
+            self._config.max_tokens,
+            self._config.temperature,
+            examples=FEWSHOT,
         )
         if text is None:
             return None
