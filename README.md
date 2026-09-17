@@ -109,8 +109,19 @@ sudo TELEGRAM_BOT_TOKEN='токен' LLM_API_KEY='ключ' bash deploy/install.
 Сменить модель (например, провайдер снял старую с обслуживания):
 
 ```bash
-bash deploy/set_model.sh                 # покажет список и выберет живую сам
+bash deploy/set_model.sh                 # покажет список и выберет годную сам
 bash deploy/set_model.sh qwen/qwen3-32b  # или поставит конкретную
+```
+
+Кандидаты проверяются тремя живыми вопросами (факт, счёт, связная русская фраза) —
+модель, которая не тянет русский, до бота не доходит.
+
+Сменить провайдера, если у текущего нет годных моделей (пример — Gemini):
+
+```bash
+python3 deploy/envtool.py set LLM_BASE_URL https://generativelanguage.googleapis.com/v1beta/openai
+python3 deploy/envtool.py set LLM_API_KEY 'ключ из aistudio.google.com/apikey'
+bash deploy/set_model.sh
 ```
 
 ## Если что-то не работает

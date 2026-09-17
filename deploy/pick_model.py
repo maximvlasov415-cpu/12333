@@ -22,6 +22,8 @@ from envtool import DEFAULT_FILE, get, put  # noqa: E402
 
 NOT_CHAT = ("whisper", "tts", "guard", "embed", "rerank", "moderation", "vision")
 REASONING = ("r1", "qwen3", "gpt-oss", "thinking", "reason", "-o1", "o3")
+# Модели, заточенные под другие языки: по-русски мелют кашу.
+OTHER_LANGUAGE = ("allam", "jais", "sea-lion", "sarvam", "typhoon", "eeve")
 # Болталки, которые бодро говорят по-русски, в порядке предпочтения.
 PREFERRED = (
     "moonshotai/kimi-k2",
@@ -63,9 +65,14 @@ def rank(model_id: str) -> tuple[int, int, str]:
     for position, prefix in enumerate(PREFERRED):
         if lowered.startswith(prefix):
             return (0, position, model_id)
-    thinks = any(marker in lowered for marker in REASONING)
+    if any(marker in lowered for marker in OTHER_LANGUAGE):
+        tier = 3
+    elif any(marker in lowered for marker in REASONING):
+        tier = 2
+    else:
+        tier = 1
     # Внутри тиров — от крупных моделей к мелким.
-    return (2 if thinks else 1, -size(model_id), model_id)
+    return (tier, -size(model_id), model_id)
 
 
 def candidates(ids: list[str]) -> list[str]:
@@ -73,37 +80,64 @@ def candidates(ids: list[str]) -> list[str]:
     return sorted(chat, key=rank)
 
 
-def speaks(base_url: str, key: str, model: str) -> tuple[bool, str]:
-    """Живой запрос: модель должна внятно ответить по-русски."""
+def say(base_url: str, key: str, model: str, prompt: str) -> tuple[str | None, str]:
     try:
         data = request(
             f"{base_url}/chat/completions",
             key,
             {
                 "model": model,
-                "max_tokens": 100,
+                "max_tokens": 150,
                 "temperature": 0.0,
                 "messages": [
                     {"role": "system", "content": "Отвечай кратко и только по-русски."},
-                    {"role": "user", "content": "Назови столицу России одним словом."},
+                    {"role": "user", "content": prompt},
                 ],
             },
         )
     except urllib.error.HTTPError as error:
-        return False, f"HTTP {error.code}: {error.read().decode()[:120]}"
+        return None, f"HTTP {error.code}: {error.read().decode()[:120]}"
     except (urllib.error.URLError, TimeoutError) as error:
-        return False, f"нет связи: {error}"
+        return None, f"нет связи: {error}"
 
     choice = (data.get("choices") or [{}])[0]
     answer = choice.get("message") or {}
     text = THINK_RE.sub("", answer.get("content") or "").strip()
     if not text:
         if answer.get("reasoning"):
-            return False, "ушла в рассуждения, текста нет"
-        return False, f"пустой текст (finish_reason={choice.get('finish_reason')})"
-    if "москв" not in text.lower():
-        return False, f"не поняла простой вопрос по-русски: {text[:60]}"
-    return True, text[:60]
+            return None, "ушла в рассуждения, текста нет"
+        return None, f"пустой текст (finish_reason={choice.get('finish_reason')})"
+    return text, ""
+
+
+def cyrillic_share(text: str) -> float:
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return 0.0
+    return sum("а" <= c.lower() <= "я" or c.lower() == "ё" for c in letters) / len(letters)
+
+
+def speaks(base_url: str, key: str, model: str) -> tuple[bool, str]:
+    """Три проверки: знание факта, счёт и связная русская фраза."""
+    checks = (
+        ("Назови столицу России одним словом.", lambda t: "москв" in t.lower()),
+        ("Сколько будет 17 плюс 25? Ответь только числом.", lambda t: "42" in t),
+        (
+            "Одним предложением по-русски: почему лёд плавает в воде?",
+            lambda t: cyrillic_share(t) > 0.8
+            and len(t.split()) >= 5
+            and any(word in t.lower() for word in ("лёд", "лед", "вод", "плотн", "легч", "плав")),
+        ),
+    )
+
+    for prompt, is_good in checks:
+        text, error = say(base_url, key, model, prompt)
+        if text is None:
+            return False, error
+        if not is_good(text):
+            return False, f"провалила проверку «{prompt[:28]}…»: {text[:60]}"
+
+    return True, "все три проверки пройдены"
 
 
 def main(argv: list[str]) -> int:
@@ -129,7 +163,11 @@ def main(argv: list[str]) -> int:
         print("\n".join(f"  - {m}" for m in candidates(models)), file=sys.stderr)
         return 1
 
-    print("Проверяю модели живым запросом:", file=sys.stderr)
+    if not wanted:
+        print(f"У провайдера {len(models)} моделей, из них болталок: {len(queue)}", file=sys.stderr)
+        print("\n".join(f"  · {m}" for m in queue), file=sys.stderr)
+
+    print("Проверяю модели живыми запросами:", file=sys.stderr)
     for model in queue[:12]:
         ok, detail = speaks(base_url, key, model)
         print(f"  {'OK  ' if ok else 'мимо'} {model} — {detail}", file=sys.stderr)
