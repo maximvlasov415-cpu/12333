@@ -13,13 +13,16 @@ from aiogram.types import Message
 from .config import Config
 from .llm import LLM
 from .memory import ChatHistory
+from .mood import JOKE_CHANCE, classify
 from .persona import (
     ADDRESSED_TEMPLATE,
     BOT_DISPLAY_NAME,
     FALLBACKS,
     FOLLOWUP_TEMPLATE,
     HINT_TEMPLATE,
+    MOOD_DIRECTIVES,
     NO_JOKE_HINT,
+    NO_JOKE_LINE,
     ROAST_TEMPLATE,
 )
 from .profiler import Profiler
@@ -133,7 +136,9 @@ async def on_message(
         if not in_dialogue and not throttle.allow(message.chat.id):
             return
 
-    joke = pick_joke(text) if random.random() < config.joke_probability else None
+    mood = classify(text)
+    joke_allowed = random.random() < JOKE_CHANCE[mood]
+    joke = pick_joke(text) if joke_allowed and random.random() < config.joke_probability else None
     if addressed:
         template = ADDRESSED_TEMPLATE
     elif in_dialogue:
@@ -148,12 +153,17 @@ async def on_message(
         )
         if part
     )
+    directive = MOOD_DIRECTIVES[mood]
+    if not joke_allowed:
+        directive = f"{directive}\n{NO_JOKE_LINE}"
     prompt = template.format(
         context=context,
         author=author,
         text=text,
+        directive=directive,
         hint=HINT_TEMPLATE.format(joke=joke) if joke else NO_JOKE_HINT,
     )
+    logger.info("Режим %s, шутка %s", mood, "разрешена" if joke_allowed else "запрещена")
 
     await bot.send_chat_action(message.chat.id, "typing")
     reply = await llm.reply(prompt)
