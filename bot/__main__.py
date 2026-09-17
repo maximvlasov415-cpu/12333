@@ -6,9 +6,10 @@ import logging
 from aiogram import Bot, Dispatcher
 
 from .config import Config
-from .handlers import Throttle, build_name_pattern, router
+from .handlers import Rotator, Throttle, build_name_pattern, router
 from .llm import LLM
 from .memory import ChatHistory
+from .persona import TECHNIQUES
 from .profiler import Profiler
 from .profiles import ProfileStore
 
@@ -41,6 +42,7 @@ async def main() -> None:
             max_tokens=config.profile_max_tokens,
         ),
         throttle=Throttle(config.random_reply_cooldown),
+        techniques=Rotator(TECHNIQUES),
         name_pattern=name_pattern,
     )
     dispatcher.include_router(router)

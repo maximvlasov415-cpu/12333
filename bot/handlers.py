@@ -24,6 +24,7 @@ from .persona import (
     NO_JOKE_HINT,
     NO_JOKE_LINE,
     ROAST_TEMPLATE,
+    TECHNIQUE_LINE,
 )
 from .profiler import Profiler
 from .profiles import ProfileStore
@@ -38,6 +39,20 @@ def build_name_pattern(names: list[str]) -> re.Pattern[str]:
     """Ловит имя бота в любом падеже: «бот», «боту», «ботяру»."""
     alternatives = "|".join(re.escape(name.lower()) for name in sorted(names, key=len, reverse=True))
     return re.compile(rf"(?<!\w)(?:{alternatives})\w*", re.IGNORECASE)
+
+
+class Rotator:
+    """Чередует приёмы шутки, чтобы Павлик не долбил одним и тем же."""
+
+    def __init__(self, items: tuple[str, ...]) -> None:
+        self._items = items
+        self._last: dict[int, str] = {}
+
+    def next(self, chat_id: int) -> str:
+        options = [item for item in self._items if item != self._last.get(chat_id)]
+        choice = random.choice(options)
+        self._last[chat_id] = choice
+        return choice
 
 
 class Throttle:
@@ -110,6 +125,7 @@ async def on_message(
     profiles: ProfileStore,
     profiler: Profiler,
     throttle: Throttle,
+    techniques: Rotator,
     name_pattern: re.Pattern[str],
 ) -> None:
     if message.from_user is None or message.from_user.is_bot:
@@ -154,7 +170,11 @@ async def on_message(
         if part
     )
     directive = MOOD_DIRECTIVES[mood]
-    if not joke_allowed:
+    if joke_allowed:
+        technique = techniques.next(message.chat.id)
+        directive = f"{directive}\n{TECHNIQUE_LINE.format(technique=technique)}"
+    else:
+        technique = "без шутки"
         directive = f"{directive}\n{NO_JOKE_LINE}"
     prompt = template.format(
         context=context,
@@ -163,7 +183,7 @@ async def on_message(
         directive=directive,
         hint=HINT_TEMPLATE.format(joke=joke) if joke else NO_JOKE_HINT,
     )
-    logger.info("Режим %s, шутка %s", mood, "разрешена" if joke_allowed else "запрещена")
+    logger.info("Режим %s, приём: %s", mood, technique)
 
     await bot.send_chat_action(message.chat.id, "typing")
     reply = await llm.reply(prompt)
