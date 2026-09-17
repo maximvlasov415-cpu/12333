@@ -53,16 +53,16 @@ class LLM:
             await self._session.close()
             self._session = None
 
-    async def reply(self, prompt: str) -> str | None:
+    async def ask(self, system: str, prompt: str, max_tokens: int, temperature: float) -> str | None:
         if self._session is None:
             raise RuntimeError("LLM.start() не вызван")
 
         payload = {
             "model": self._config.llm_model,
-            "max_tokens": self._config.max_tokens,
-            "temperature": self._config.temperature,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ],
         }
@@ -87,8 +87,14 @@ class LLM:
             logger.warning("LLM вернул пустой ответ: %s", data)
             return None
 
-        text = _clean(choices[0].get("message", {}).get("content") or "")
-        if not text:
+        return _clean(choices[0].get("message", {}).get("content") or "") or None
+
+    async def reply(self, prompt: str) -> str | None:
+        """Реплика в чат от лица Павлика."""
+        text = await self.ask(
+            SYSTEM_PROMPT, prompt, self._config.max_tokens, self._config.temperature
+        )
+        if text is None:
             return None
 
         lowered = text.lower()

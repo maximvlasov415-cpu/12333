@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -24,6 +25,10 @@ class Config:
     temperature: float
     request_timeout: float
     allowed_chat_ids: set[int]
+    profile_path: Path
+    profile_update_every: int
+    profile_max_notes: int
+    profile_max_tokens: int
 
     @classmethod
     def from_env(cls) -> Config:
@@ -39,7 +44,7 @@ class Config:
         if not api_key and "localhost" not in base_url and "127.0.0.1" not in base_url:
             raise SystemExit(f"LLM_API_KEY не задан — нужен ключ для {base_url}")
 
-        names = _split(os.getenv("BOT_NAMES", "бот,ботяра"))
+        names = _split(os.getenv("BOT_NAMES", "павлик,павлуш,павел,павл,паш"))
         if not names:
             raise SystemExit("BOT_NAMES пустой — боту не на что откликаться")
 
@@ -56,4 +61,8 @@ class Config:
             temperature=float(os.getenv("LLM_TEMPERATURE", "1.0")),
             request_timeout=float(os.getenv("LLM_TIMEOUT", "30")),
             allowed_chat_ids={int(chat_id) for chat_id in _split(os.getenv("ALLOWED_CHAT_IDS", ""))},
+            profile_path=Path(os.getenv("PROFILE_PATH", "profiles.json")),
+            profile_update_every=int(os.getenv("PROFILE_UPDATE_EVERY", "25")),
+            profile_max_notes=int(os.getenv("PROFILE_MAX_NOTES", "3")),
+            profile_max_tokens=int(os.getenv("PROFILE_MAX_TOKENS", "600")),
         )
